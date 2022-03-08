@@ -5,14 +5,43 @@ module GaussianPure
 
 using Base: Number
 using Documenter
-using Main.imageViewerHelper
 using Statistics
 using LinearAlgebra
 using StaticArrays
+
+```@doc
+works only for 3d cartesian coordinates
+  cart - cartesian coordinates of point where we will add the dimensions ...
+```
+function cartesianTolinear(pointCart::CartesianIndex{3}) :: Int16
+   abs(pointCart[1])+ abs(pointCart[2])+abs(pointCart[3])
+end
+
+
+  ```@doc
+  point - cartesian coordinates of point around which we want the cartesian coordeinates
+  return set of cartetian coordinates of given distance -patchSize from a point
+```
+function cartesianCoordAroundPoint(pointCart::CartesianIndex{3}, patchSize ::Int)::Array{CartesianIndex{3}}
+  ones = CartesianIndex(patchSize,patchSize,patchSize) # cartesian 3 dimensional index used for calculations to get range of the cartesian indicis to analyze
+  out = Array{CartesianIndex{3}}(UndefInitializer(), 6+2*patchSize^4)
+  index =0
+  for J in (pointCart-ones):(pointCart+ones)
+    diff = J - pointCart # diffrence between dimensions relative to point of origin
+      if cartesianTolinear(diff) <= patchSize
+        index+=1
+        out[index] = J
+      end
+      end
+return out[1:index]
+end
+
+
+
 ```@doc
 2. By iteratively  searching through the mask M array cartesian coordinates of all entries with value 7 will be returned.
 ```
-function getCoordinatesOfMarkings(::Type{ImageNumb}, ::Type{maskNumb}, M::Array{maskNumb, 3}, I::Array{ImageNumb, 3} )  ::Vector{CartesianIndex{3}} where{ImageNumb,maskNumb}
+function getCoordinatesOfMarkings(::Type{ImageNumb}, ::Type{maskNumb}, M, I )  ::Vector{CartesianIndex{3}} where{ImageNumb,maskNumb}
     return filter((index)->M[index]==7 ,CartesianIndices(M))
 end    
 
@@ -21,7 +50,7 @@ end
 getOneNormDist\(pointA,pointB\)
 ```
 function getOneNormDist(pointA::CartesianIndex{3},pointB::CartesianIndex{3}) ::Int
-   return Main.imageViewerHelper.cartesianTolinear(pointB-pointA  ) 
+   return cartesianTolinear(pointB-pointA  ) 
 end
 
 ```@doc
@@ -29,7 +58,7 @@ end
  in distance not bigger then z
 ```
 function getCartesianAroundPoint(point::CartesianIndex{3},z ::Int)  ::Vector{CartesianIndex{3}}
-    return Main.imageViewerHelper.cartesianCoordAroundPoint(point,z)
+    return cartesianCoordAroundPoint(point,z)
 end    
 
 ```@doc
@@ -56,7 +85,7 @@ end
  first type is specyfing the type of number in image array second in the output - so we can controll what type of float it would be
 getSampleMeanAndStd\(points,I\)
 ```
-function  getSampleMeanAndStd(a ::Type{Numb},b ::Type{myFloat}, coords::Vector{CartesianIndex{3}} , I ::Array{Numb, 3} ) ::Vector{myFloat} where{Numb, myFloat}
+function  getSampleMeanAndStd(a ::Type{Numb},b ::Type{myFloat}, coords::Vector{CartesianIndex{3}} , I  ) ::Vector{myFloat} where{Numb, myFloat}
     arr= I[coords]
     return [mean(arr), std(arr)]   
 end
@@ -65,7 +94,7 @@ end
 8.Next we reduce each of the sub patch omega using getSampleMeanAndStd function and store result in patchStats
 calculatePatchStatistics\(allNeededCoord,I\)
 ```
-function calculatePatchStatistics(a ::Type{Numb},b ::Type{myFloat},allNeededCoord ::Vector{Vector{Vector{CartesianIndex{3}}}},I ::Array{Numb, 3}) ::Vector{Vector{Vector{myFloat}}}  where{Numb, myFloat}
+function calculatePatchStatistics(a ::Type{Numb},b ::Type{myFloat},allNeededCoord ::Vector{Vector{Vector{CartesianIndex{3}}}},I ) ::Vector{Vector{Vector{myFloat}}}  where{Numb, myFloat}
     return [ [getSampleMeanAndStd(a,b, x,I) for x in outer ] for outer in  allNeededCoord]
 end
 
@@ -138,7 +167,9 @@ get resultant  vector of normalizing constant mean
  2. covariance matrix inverse
  3. log of normalization constant
   ```
-function getConstantsForPDF(floatType ::Type{myFloat},imageTyp ::Type{imageTypeNumb},maskType ::Type{maskTypeNumb} ,M::Array{maskTypeNumb, 3}, I::Array{imageTypeNumb, 3}, z::Int)   where{myFloat,imageTypeNumb,maskTypeNumb }
+function getConstantsForPDF(floatType ::Type{myFloat},imageTyp ::Type{imageTypeNumb}
+    ,maskType ::Type{maskTypeNumb} 
+    ,M, I, z::Int)   where{myFloat,imageTypeNumb,maskTypeNumb }
 
 return getCoordinatesOfMarkings(imageTypeNumb,maskTypeNumb, M,I) |>
 (seedsCoords) ->getPatchAroundMarks(seedsCoords,z ) |>

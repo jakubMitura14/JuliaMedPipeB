@@ -1,13 +1,10 @@
+
+
 using LinearAlgebra: convert, Matrix
 using BenchmarkTools: maximum
 using Base: Flatten
-using DrWatson
-@quickactivate "Probabilistic medical segmentation"
-dirToImageHelper = DrWatson.scriptsdir("MedImageTransformations","gaussianFromSeeds","GaussiansFromSeeds.jl")
-include(dirToImageHelper)
-using Main.GaussianPure
+
 using Test
-using BenchmarkTools
 using Statistics
 using LinearAlgebra
 using Distributions
@@ -15,11 +12,11 @@ using PDMats
 using StaticArrays
 
 
-```@doc
-2\)Example 3 dimensional matrix I with example marking mask M 
+"""
+Example 3 dimensional matrix I with example marking mask M 
 will be saved with known number of marked points  x on known position
 We will assert thag wefound correctly those points and that 
-```
+"""
 @testset " getCoordinatesOfMarkings " begin 
 A = ones(4,4,4)
 B = ones(4,4,4)

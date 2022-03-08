@@ -16,6 +16,15 @@ using Main.generalUtils
 using KernelAbstractions
 using MacroTools
 
+
+```@doc
+works only for 3d cartesian coordinates
+  cart - cartesian coordinates of point where we will add the dimensions ...
+```
+function cartesianTolinear(pointCart::CartesianIndex{3}) :: Int16
+   abs(pointCart[1])+ abs(pointCart[2])+abs(pointCart[3])
+end
+
 ```@doc
 Configuring the ParallelStencil library 
   ```
@@ -139,13 +148,7 @@ function cartesianCoordAroundPoint(pointCart::CartesianIndex{3}, patchSize ::Int
 return out[1:index]
 end
 
-```@doc
-works only for 3d cartesian coordinates
-  cart - cartesian coordinates of point where we will add the dimensions ...
-```
-function cartesianTolinear(pointCart::CartesianIndex{3}) :: Int16
-   abs(pointCart[1])+ abs(pointCart[2])+abs(pointCart[3])
-end
+
 
 
 
