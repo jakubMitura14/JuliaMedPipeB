@@ -5,6 +5,7 @@ supported 'dataType' attributes for dataSets
 "multiDiscreteLabel" - diffrent discrete colors assigned to multiple discrete labels
 "contLabel" - continous color  display for example float valued probabilistic label
 "PET" - continous color  display for example float valued 
+"manualModif" - manually modified array - using annotation functionality of a viewer
 
 """
 
@@ -97,12 +98,17 @@ listOfColorUsed= falses(18)
   group = fid[patienGroupName]
  #strings holding the arrays holding data about given patient
  imagesMasks = keys(group)
- #imageSize=(0,0,0)
- #textureSpecifications= Vector(undef,length(imagesMasks)+1)
 
+
+#adding one spot to be able to get manually modifiable mask
  imageSize::Tuple{Int64,Int64,Int64}= (0,0,0)
- textureSpecifications::Vector{TextureSpec}=Vector(undef,length(imagesMasks)+1)
- tupleVect=Vector(undef,length(imagesMasks)+1)
+toAddForManualModif = 0
+if( !haskey(group, "manualModif") )
+  toAddForManualModif=1
+end
+
+ textureSpecifications::Vector{TextureSpec}=Vector(undef,length(imagesMasks)+toAddForManualModif)
+ tupleVect=Vector(undef,length(imagesMasks)+toAddForManualModif)
 
  index = 0;
   for maskName in imagesMasks
@@ -110,11 +116,18 @@ listOfColorUsed= falses(18)
     dset = group[maskName]
     dataTypeStr= attributes(dset)["dataType"][]
 
-    voxels = permuteAndReverse(dset[:,:,:,1,1])
-    if(dataTypeStr=="boolLabel")
-      voxels = onlyPermute(dset[:,:,:,1,1])
+    voxels = permuteAndReverse(dset[:,:,:])
+    if(dataTypeStr=="manualModif")
+      voxels = dset[:,:,:]
     end  
-    
+
+
+    # if(dataTypeStr=="boolLabel")
+    #   voxels = onlyPermute(dset[:,:,:,1,1])
+    # end  
+    @info " mask name   " maskName
+    @info "voxel dims   " size(voxels)
+
     typp = eltype(voxels)
     min = attributes(dset)["min"][]
     max = attributes(dset)["max"][]
@@ -127,12 +140,13 @@ listOfColorUsed= falses(18)
   end #for
   index+=1
 #and additionally manually modifiable ...
-textureSpec = getDefaultTextureSpec("manualModif","manualModif" ,index,listOfColorUsed, UInt8, 0, 1)
-textureSpecifications[index]=textureSpec
-#append!( textureSpecifications, textureSpec )
-tupleVect[index] =("manualModif",zeros(UInt8,imageSize))
-
-
+if( !haskey(group, "manualModif") )
+  @info "nnnnnn no  manualModif key "
+  textureSpec = getDefaultTextureSpec("manualModif","manualModif" ,index,listOfColorUsed, UInt8, 0, 1)
+  textureSpecifications[index]=textureSpec
+  tupleVect[index] =("manualModif",zeros(UInt8,imageSize))
+end#if
+@info "tupleVect " tupleVect
 spacingList = attributes(group)["spacing"][]
 spacing=(Int64(spacingList[1]),Int64(spacingList[2]),Int64(spacingList[3]))
 
@@ -188,7 +202,6 @@ function getDefaultTextureSpec(dataTypeStr::String,maskName::String ,index::Int,
       numb= Int32(index),
       color =getSomeColor(listOfColorUsed)
       ,minAndMaxValue= typp.([min,max])
-      ,isEditable = true
      )
    
   elseif(dataTypeStr=="multiDiscreteLabel") 
@@ -201,6 +214,7 @@ function getDefaultTextureSpec(dataTypeStr::String,maskName::String ,index::Int,
     
 
   elseif(dataTypeStr=="manualModif") #for manual modification
+    @info  " loading manual modif "
     return TextureSpec{typp}(
       name = maskName,
       numb= Int32(index),

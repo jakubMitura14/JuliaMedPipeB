@@ -2,27 +2,43 @@ pathToHDF5="D:\\dataSets\\forMainHDF5\\smallLiverDataSet.hdf5"
 
 using Revise
 includet("D:\\projects\\vsCode\\JuliaMedPipeB\\tests\\includeAll.jl")
+using Main.GaussianPure
+using Main.HDF5saveUtils
 
+patienGroupName="0"
 
+#1) open HDF5 file
+fid = h5open(pathToHDF5, "r+")
+#2) primary display of chosen image and annotating couple points with a liver
+mainScrollDat= loadFromHdf5Prim(fid,patienGroupName)
+#3) save manual modifications to HDF5
+saveManualModif(fid,patienGroupName , mainScrollDat)
+#4) filtering out from the manually modified array all set pixels and get constants needed for later evaluation of gaussian PDF
+manualModif= filter((it)->it.name=="manualModif" ,mainScrollDat.dataToScroll)[1].dat
+image= filter((it)->it.name=="image" ,mainScrollDat.dataToScroll)[1].dat
+GaussianPure.getConstantsForPDF(Float64,eltype(image),eltype(manualModif) , manualModif, image)
+#5) using CUDA applying calculated constants to each voxel - setting the probability of a voxel to be liver
 
+#6) relaxation labelling
 
+#7) displaying performance metrics
 
-fid = h5open(pathToHDF5, "r")
-
-
-
-loadFromHdf5Prim(fid,"21")
-
-
-
-group = fid["20"]
-#strings holding the arrays holding data about given patient
-imagesMasks = keys(group)
-dset = group[imagesMasks[1]]
-dset[:,:,:,1,1]
-dset = group[imagesMasks[2]]
-dset[:,:,:,1,1]
 close(fid)
+
+
+group = keys(fid["0"])
+
+manualModif= filter((it)->it.name=="manualModif" ,mainScrollDat.dataToScroll)[1].dat
+
+Int64(sum(manualModif))
+# group = fid["20"]
+# #strings holding the arrays holding data about given patient
+# imagesMasks = keys(group)
+# dset = group[imagesMasks[1]]
+# dset[:,:,:,1,1]
+# dset = group[imagesMasks[2]]
+# dset[:,:,:,1,1]
+# close(fid)
 
 
 # patienGroupName= "21"

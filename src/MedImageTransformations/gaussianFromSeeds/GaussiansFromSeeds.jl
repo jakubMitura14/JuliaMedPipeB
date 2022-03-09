@@ -40,6 +40,7 @@ end
 
 ```@doc
 2. By iteratively  searching through the mask M array cartesian coordinates of all entries with value 7 will be returned.
+Important the number 7 is completely arbitrary - and need to agree with the number set in the annotator
 ```
 function getCoordinatesOfMarkings(::Type{ImageNumb}, ::Type{maskNumb}, M, I )  ::Vector{CartesianIndex{3}} where{ImageNumb,maskNumb}
     return filter((index)->M[index]==7 ,CartesianIndices(M))
