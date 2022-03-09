@@ -88,13 +88,12 @@ loading image from HDF5 dataset
 fid- objct managing HDF5 file
 patienGroupName- tell us  the string that is a name of the HDF5 group with all data needed for a given patient
 fractionOfMainIm - effectively will set how much space is left for text display
-
+addTextSpecs - additional texture specifications required to define and save some of the masks
 """
 function loadFromHdf5Prim(fid, patienGroupName::String
-  ,fractionOfMainIm::Float32= Float32(0.8) )
+  , addTextSpecs::Vector{TextureSpec},listOfColorUsed,fractionOfMainIm::Float32= Float32(0.8) )
 
 #marks what colors are already used 
-listOfColorUsed= falses(18)
   group = fid[patienGroupName]
  #strings holding the arrays holding data about given patient
  imagesMasks = keys(group)
@@ -102,51 +101,71 @@ listOfColorUsed= falses(18)
 
 #adding one spot to be able to get manually modifiable mask
  imageSize::Tuple{Int64,Int64,Int64}= (0,0,0)
-toAddForManualModif = 0
-if( !haskey(group, "manualModif") )
-  toAddForManualModif=1
-end
+toAddAddedTextures = 0
+addTextureNames::Vector{String}= Vector(undef,length(addTextSpecs))
+#making sure that each array will be included
+index = 0;
+for tex in addTextSpecs
+  index+=1
+  addTextureNames[index]=tex.name
+  if(!haskey(group,tex.name))
+    toAddAddedTextures+=1
+  end#if  
+end#for
 
- textureSpecifications::Vector{TextureSpec}=Vector(undef,length(imagesMasks)+toAddForManualModif)
- tupleVect=Vector(undef,length(imagesMasks)+toAddForManualModif)
+#preinitialized placeholders
+ textureSpecifications::Vector{TextureSpec}=Vector(undef,length(imagesMasks)+toAddAddedTextures)
+ tupleVect=Vector(undef,length(imagesMasks)+toAddAddedTextures)
 
  index = 0;
   for maskName in imagesMasks
     index+=1
     dset = group[maskName]
     dataTypeStr= attributes(dset)["dataType"][]
+    #additional arrays are saved and loaded as is
+    voxels =  if(maskName in addTextureNames )
+                  voxels = dset[:,:,:]
+                else permuteAndReverse(dset[:,:,:])
+              end  
 
-    voxels = permuteAndReverse(dset[:,:,:])
-    if(dataTypeStr=="manualModif")
-      voxels = dset[:,:,:]
-    end  
 
-
-    # if(dataTypeStr=="boolLabel")
-    #   voxels = onlyPermute(dset[:,:,:,1,1])
-    # end  
-    @info " mask name   " maskName
-    @info "voxel dims   " size(voxels)
+    # @info " mask name   " maskName
+    # @info "voxel dims   " size(voxels)
 
     typp = eltype(voxels)
     min = attributes(dset)["min"][]
     max = attributes(dset)["max"][]
-    textureSpec = getDefaultTextureSpec(dataTypeStr,maskName ,index,listOfColorUsed, typp, min, max)
+
+#initializing texture
+    textureSpec =  if(maskName in addTextureNames )
+      textureSpec = filter(tex->tex.name==maskName,addTextSpecs  )[1]
+    else getDefaultTextureSpec(dataTypeStr,maskName ,index,listOfColorUsed, typp, min, max)
+  end  
+  textureSpec.numb= index
     imageSize= size(voxels)
 
     textureSpecifications[index]=textureSpec
     #append!( textureSpecifications, textureSpec )
     tupleVect[index] =(maskName,voxels)
   end #for
-  index+=1
 #and additionally manually modifiable ...
-if( !haskey(group, "manualModif") )
-  @info "nnnnnn no  manualModif key "
-  textureSpec = getDefaultTextureSpec("manualModif","manualModif" ,index,listOfColorUsed, UInt8, 0, 1)
-  textureSpecifications[index]=textureSpec
-  tupleVect[index] =("manualModif",zeros(UInt8,imageSize))
-end#if
-@info "tupleVect " tupleVect
+
+for tex in addTextSpecs
+  if( !haskey(group, tex.name) )
+    index+=1
+
+    #@info "nnnnnn no  manualModif key "
+    textureSpec = tex
+    textureSpec.numb= index
+    textureSpecifications[index]=textureSpec
+    tupleVect[index] =(tex.name,zeros(eltype(tex.minAndMaxValue) ,imageSize))
+  end#if
+end#for
+
+
+
+
+
 spacingList = attributes(group)["spacing"][]
 spacing=(Int64(spacingList[1]),Int64(spacingList[2]),Int64(spacingList[3]))
 
@@ -192,14 +211,12 @@ function getDefaultTextureSpec(dataTypeStr::String,maskName::String ,index::Int,
   if(dataTypeStr=="CT")
     return TextureSpec{typp}(
       name= maskName,
-      numb= Int32(index),
       isMainImage = true,
       minAndMaxValue= typp.([0,100])) 
 
   elseif(dataTypeStr=="boolLabel")
     return TextureSpec{typp}(
       name = maskName,
-      numb= Int32(index),
       color =getSomeColor(listOfColorUsed)
       ,minAndMaxValue= typp.([min,max])
      )
@@ -213,20 +230,18 @@ function getDefaultTextureSpec(dataTypeStr::String,maskName::String ,index::Int,
   elseif(dataTypeStr=="PET") 
     
 
-  elseif(dataTypeStr=="manualModif") #for manual modification
-    @info  " loading manual modif "
-    return TextureSpec{typp}(
-      name = maskName,
-      numb= Int32(index),
-      color =getSomeColor(listOfColorUsed)
-      ,minAndMaxValue= typp.([min,max ])
-      ,isEditable = true
-     )
+
   end
 
 end
 
 
+
+function getArrByName(name::String,mainScrollDat )
+
+return  filter((it)->it.name==name ,mainScrollDat.dataToScroll)[1].dat
+
+end #getArrByName
 
 
 

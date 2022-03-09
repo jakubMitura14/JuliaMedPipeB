@@ -87,7 +87,9 @@ end
 getSampleMeanAndStd\(points,I\)
 ```
 function  getSampleMeanAndStd(a ::Type{Numb},b ::Type{myFloat}, coords::Vector{CartesianIndex{3}} , I  ) ::Vector{myFloat} where{Numb, myFloat}
-    arr= I[coords]
+  sizz = size(I)  
+  arr= I[filter(c-> c[1]>0 && c[2]>0 && c[3]>0 
+                    && c[1]<sizz[1]&& c[2]<sizz[2] && c[3]<sizz[3]  ,coords)]
     return [mean(arr), std(arr)]   
 end
 
