@@ -22,7 +22,7 @@ end
   point - cartesian coordinates of point around which we want the cartesian coordeinates
   return set of cartetian coordinates of given distance -patchSize from a point
 ```
-function cartesianCoordAroundPoint(pointCart::CartesianIndex{3}, patchSize ::Int)::Array{CartesianIndex{3}}
+function cartesianCoordAroundPoint(pointCart::CartesianIndex{3}, patchSize ::Int)
   ones = CartesianIndex(patchSize,patchSize,patchSize) # cartesian 3 dimensional index used for calculations to get range of the cartesian indicis to analyze
   out = Array{CartesianIndex{3}}(UndefInitializer(), 6+2*patchSize^4)
   index =0
@@ -43,7 +43,7 @@ end
 Important the number 7 is completely arbitrary - and need to agree with the number set in the annotator
 ```
 function getCoordinatesOfMarkings(::Type{ImageNumb}, ::Type{maskNumb}, M, I )  ::Vector{CartesianIndex{3}} where{ImageNumb,maskNumb}
-    return filter((index)->M[index]==7 ,CartesianIndices(M))
+    return filter((index)->M[index]>0 ,CartesianIndices(M))
 end    
 
 ```@doc    
@@ -67,7 +67,7 @@ end
 markings - calculated  earlier in getCoordinatesOfMarkings  z is the size of the patch - it is one of the hyperparameters
 return the patch of pixels around each marked point
 ```
-function getPatchAroundMarks(markings ::Vector{CartesianIndex{3}}, z::Int) ::Vector{Vector{CartesianIndex{3}}}
+function getPatchAroundMarks(markings ::Vector{CartesianIndex{3}}, z::Int) 
     return [getCartesianAroundPoint(x,z) for x in markings]
 end    
 ```@doc
@@ -76,7 +76,7 @@ markingsPatches is just the output of getPatchAroundMarks
 z is the size of the patch - it is one of the hyperparameters
 return nested patches so we have patch around each voxel from primary patch
 ```
-function allNeededCoord(markingsPatches ::Vector{Vector{CartesianIndex{3}}},z::Int ) ::Vector{Vector{Vector{CartesianIndex{3}}}}
+function allNeededCoord(markingsPatches ,z::Int ) ::Vector{Vector{Vector{CartesianIndex{3}}}}
     return [getPatchAroundMarks(x,z) for x in markingsPatches]
 end    
 
@@ -95,7 +95,7 @@ end
 8.Next we reduce each of the sub patch omega using getSampleMeanAndStd function and store result in patchStats
 calculatePatchStatistics\(allNeededCoord,I\)
 ```
-function calculatePatchStatistics(a ::Type{Numb},b ::Type{myFloat},allNeededCoord ::Vector{Vector{Vector{CartesianIndex{3}}}},I ) ::Vector{Vector{Vector{myFloat}}}  where{Numb, myFloat}
+function calculatePatchStatistics(a ::Type{Numb},b ::Type{myFloat},allNeededCoord ,I )  where{Numb, myFloat}
     return [ [getSampleMeanAndStd(a,b, x,I) for x in outer ] for outer in  allNeededCoord]
 end
 
@@ -104,13 +104,13 @@ end
 9.We calculate feature vector related to a seed  point  where we will normalize means and standard deviations
  from all pixels in a primary patch where each feature vector ba
 ```
-function calculateFeatureVector(a ::Type{myFloat},patchStat ::Vector{Vector{myFloat}}) ::Vector{myFloat} where{ myFloat}
+function calculateFeatureVector(a ::Type{myFloat},patchStat)  where{ myFloat}
      return  [ getSumOverNorm(map(x->x[1], patchStat)) ,   getSumOverNorm(map(x->x[2], patchStat)) ] 
 end    
 ```@doc
 given vector with float values it divides sum of this vector  by norm of this vector
 ```
-function getSumOverNorm(vect::Vector{myFloat}) ::myFloat  where{ myFloat}
+function getSumOverNorm(vect) 
    return sum(vect)/norm(vect,2)
 end
 
@@ -120,7 +120,7 @@ end
 Calculating the Covariance matrix for single 2 dimensional matrix 
 patchStat means and standard deviations related to given seedpoint
 ```
-function getCovarianceMatrix(a ::Type{myFloat},patchStat ::Vector{Vector{myFloat}}) ::SMatrix{2, 2, myFloat, 4}  where{ myFloat}
+function getCovarianceMatrix(a ::Type{myFloat},patchStat ) where{ myFloat}
     means= [x[1] for x in patchStat]
     stds = [x[2] for x in patchStat]
     covv = cov(means,stds)
@@ -134,7 +134,7 @@ covarianceMatrix  is 2 by 2
 fetureVectLength tells us about dimensionality of features
 return calculated log of multivariate normal distribution
 ```
-function getLogNormalConst(a ::Type{myFloat},covarianceMatrix ::SMatrix{2, 2, myFloat, 4}, fetureVectLength ::Int) :: myFloat where{ myFloat}
+function getLogNormalConst(a ::Type{myFloat},covarianceMatrix, fetureVectLength ::Int) :: myFloat where{ myFloat}
     return  -(fetureVectLength*  log(2π)+logdet(covarianceMatrix))/2
 end    
 
@@ -142,7 +142,7 @@ end
 For convinience we will fuse here a step of creating feature ectors and covariance matrices
 patchStat means and standard deviations related to given seedpoint
 ```
-function getCovarianceMatricisAndFeatureVectors(a ::Type{myFloat},patchStats ::Vector{Vector{Vector{myFloat}}}) ::Vector{Tuple{SMatrix{2, 2, myFloat, 4}, Vector{myFloat}}}  where{ myFloat}
+function getCovarianceMatricisAndFeatureVectors(a ::Type{myFloat},patchStats )  where{ myFloat}
   return [(getCovarianceMatrix(a,patchStat ),calculateFeatureVector(a,patchStat)) for patchStat in patchStats ]
     
 end
@@ -189,7 +189,7 @@ Return the constants quadriple needed to efficiently calculate gaussians pdfs de
     3. log of normalization constant
     4.covariance matrix
   ```
-function fromFeatureVectorCalculateConstants(floatType ::Type{myFloat}, fvSandCovs ::Vector{Tuple{SMatrix{2, 2, myFloat, 4}, Vector{myFloat}}})  where{myFloat }
+function fromFeatureVectorCalculateConstants(floatType ::Type{myFloat}, fvSandCovs)  where{myFloat }
     return [(fvSandCov[2],# mean
            inv(fvSandCov[1]), # just 4 numbers no point in cholesky
            getLogNormalConst(floatType,fvSandCov[1],2)# calculating the log of normalizing constant

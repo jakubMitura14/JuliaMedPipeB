@@ -16,7 +16,7 @@ saveManualModif(fid,patienGroupName , mainScrollDat)
 #4) filtering out from the manually modified array all set pixels and get constants needed for later evaluation of gaussian PDF
 manualModif= filter((it)->it.name=="manualModif" ,mainScrollDat.dataToScroll)[1].dat
 image= filter((it)->it.name=="image" ,mainScrollDat.dataToScroll)[1].dat
-GaussianPure.getConstantsForPDF(Float64,eltype(image),eltype(manualModif) , manualModif, image)
+GaussianPure.getConstantsForPDF(Float64,eltype(image),eltype(manualModif) , manualModif, image,3)
 #5) using CUDA applying calculated constants to each voxel - setting the probability of a voxel to be liver
 
 #6) relaxation labelling
