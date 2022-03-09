@@ -45,6 +45,18 @@ manualModif= getArrByName("manualModif" ,mainScrollDat)
 image=  getArrByName("image" ,mainScrollDat)
 GaussianPure.getConstantsForPDF(Float64,eltype(image),eltype(manualModif) , manualModif, image,3)
 
+algoOutput=  getArrByName("algoOutput" ,mainScrollDat)
+
+
+algoOutput[1:10,:,:].=0.1
+algoOutput[11:20,:,:].=0.5
+algoOutput[21:40,:,:].=0.8
+
+saveMaskbyName(fid,patienGroupName , mainScrollDat, "algoOutput")
+
+
+
+
 #5) using CUDA applying calculated constants to each voxel - setting the probability of a voxel to be liver
 
 
