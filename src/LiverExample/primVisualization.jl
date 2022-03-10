@@ -89,7 +89,7 @@ indicies
 #ditributions from diffrent clusters
 chosenDistribs = map(ind->distribs[ind] ,indicies)
 
-
+## single thread
 function getMaxProb(point)
     coords= getCartesianAroundPoint(point,z)
     xxx=getSampleMeanAndStd( Float64,Float64, coords , image  )
@@ -97,20 +97,33 @@ function getMaxProb(point)
 end
 
 
+output = map(getMaxProb, CartesianIndices(image))
+maximum(output)
+algoOutput[:,:,:]=output./maximum(output)
 
+
+## multithread
 cartss = CartesianIndices(image)
 Threads.@threads for i = 1:length(image)
     algoOutput[i] = getMaxProb(cartss[1])
 end
 
+## GPU
+exampleDistr= distribs[1]
+exampleDistr.μ
+exampleDistr.Σ
 
-output = map(getMaxProb, CartesianIndices(image))
 
-maximum(output)
-algoOutput[:,:,:]=output./maximum(output)
 
 
 maximum(algoOutput)
+
+
+
+
+
+
+
 
 # #now we can 
 # using Distributed
