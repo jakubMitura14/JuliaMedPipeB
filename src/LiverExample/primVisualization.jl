@@ -107,15 +107,55 @@ xxx= patchStats[1][1]
 
 Distributions.pdf(distribs[4], xxx) #0.0019
 
-c0= mvnormal_c0(exampleDistr)
 
 centered =  xxx-exampleDistr.μ
 myProb = exp(c0- (transpose( centered )*inv(exampleDistr.Σ)* centered )/2 )
 
 
 
+c0= mvnormal_c0(exampleDistr)
+invCov= inv(exampleDistr.Σ)
+# 1) logConst 2) mu1 3) mu2 4) invcov00 5)invcov01 6)invcov10 7)invcov11 
+con= [c0,exampleDistr.μ[1],exampleDistr.μ[2],invCov[1,1],invCov[1,2],invCov[2,1],invCov[2,2]  ]
+
+centeredA = xxx[1]-con[2]
+centered2 = xxx[2]-con[3]
+
+exp(con[1]-( ((centeredA*con[4]+centered2*con[6])*centeredA+(centeredA*con[5]+centered2*con[7])*centered2)/2    ) )
 
 
+
+
+((a*c+b*e)*a+(a*d+b*f)*b)/2
+
+
+###
+summ=0.0
+sumCentered=0.0
+
+
+values = map(cord->image[cord] ,ccoorr)
+mean(values) #122.1677f0
+var(values) #94.71601f0
+
+
+ccoorr = coordsss[1][1]
+lenn= length(ccoorr)
+for i in 1: lenn
+    summ+=image[ccoorr[i]]
+end    
+#now sum wil be mean
+summ=summ/lenn
+for i in 1: lenn
+    sumCentered+= ((image[ccoorr[i]]-summ )^2)
+end   
+#here we have standard deviation
+sumCentered= sqrt(sumCentered/(lenn-1))
+
+summ=summ-con[2]
+summ=sumCentered-con[3]
+
+exp(con[1]-( ((centeredA*con[4]+centered2*con[6])*centeredA+(centeredA*con[5]+centered2*con[7])*centered2)/2    ) )
 
 
 
