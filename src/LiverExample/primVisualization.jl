@@ -116,31 +116,52 @@ con= [c0,exampleDistr.μ[1],exampleDistr.μ[2],invCov[1,1],invCov[1,2],invCov[2,
 
 ###
 
-z=1
+r=1
 idx=10 # threadidx+ (blockidx-1)*blockdimx
 idy=10
 idz=10
 
+mainArrSize = (10,10,10)
+vecc = Vector{CartesianIndex{3}}(UndefInitializer(), 4)
 
-vecc = Vector{CartesianIndex{3}}(UndefInitializer(), 997)
 index =0
-for xAdd in -z:z
-    for yAdd in -z:z
-        for zAdd in -z:z
-            if(abs(xAdd+yAdd+zAdd) <z)
-                index+=1
-                vecc[index]= CartesianIndex(idx+xAdd,idy+yAdd,idz+zAdd  )
-            end    
+
+    macro iterAround(ex   )
+        return esc(quote
+        for xAdd in -r:r
+            x= idx+xAdd
+                if(x>0 && x<=mainArrSize[1])
+                for yAdd in -r:r
+                    y= idy+yAdd
+                    if(y>0 && y<=mainArrSize[2])
+                        for zAdd in -r:r
+                            z= idz+zAdd
+                            if(z>0 && z<=mainArrSize[3])
+                                if((abs(xAdd)+abs(yAdd)+abs(zAdd)) <=r)
+                                    $ex
+                                end 
+                            end
+                        end
+                    end    
+                end    
+            end
         end    
+    end)
     end
-end    
+      
+
+
+ @iterAround  vecc[index]= CartesianIndex(x,y,z)
+
+
+
 
 index
 
-vecc
-carts= GaussianPure.cartesianCoordAroundPoint(CartesianIndex(10,10,10),1)
+Set(vecc)
+carts= GaussianPure.cartesianCoordAroundPoint(CartesianIndex(10,10,10),2)
 
-
+Set(vecc) == Set(carts)
 ###
 summ=0.0
 sumCentered=0.0
