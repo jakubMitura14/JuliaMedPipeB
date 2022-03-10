@@ -108,36 +108,42 @@ xxx= patchStats[1][1]
 Distributions.pdf(distribs[4], xxx) #0.0019
 
 
-centered =  xxx-exampleDistr.μ
-myProb = exp(c0- (transpose( centered )*inv(exampleDistr.Σ)* centered )/2 )
-
-
-
 c0= mvnormal_c0(exampleDistr)
 invCov= inv(exampleDistr.Σ)
 # 1) logConst 2) mu1 3) mu2 4) invcov00 5)invcov01 6)invcov10 7)invcov11 
 con= [c0,exampleDistr.μ[1],exampleDistr.μ[2],invCov[1,1],invCov[1,2],invCov[2,1],invCov[2,2]  ]
 
-centeredA = xxx[1]-con[2]
-centered2 = xxx[2]-con[3]
 
-exp(con[1]-( ((centeredA*con[4]+centered2*con[6])*centeredA+(centeredA*con[5]+centered2*con[7])*centered2)/2    ) )
+###
+
+z=1
+idx=10 # threadidx+ (blockidx-1)*blockdimx
+idy=10
+idz=10
 
 
+vecc = Vector{CartesianIndex{3}}(UndefInitializer(), 997)
+index =0
+for xAdd in -z:z
+    for yAdd in -z:z
+        for zAdd in -z:z
+            if(abs(xAdd+yAdd+zAdd) <z)
+                index+=1
+                vecc[index]= CartesianIndex(idx+xAdd,idy+yAdd,idz+zAdd  )
+            end    
+        end    
+    end
+end    
 
+index
 
-((a*c+b*e)*a+(a*d+b*f)*b)/2
+vecc
+carts= GaussianPure.cartesianCoordAroundPoint(CartesianIndex(10,10,10),1)
 
 
 ###
 summ=0.0
 sumCentered=0.0
-
-
-values = map(cord->image[cord] ,ccoorr)
-mean(values) #122.1677f0
-var(values) #94.71601f0
-
 
 ccoorr = coordsss[1][1]
 lenn= length(ccoorr)
@@ -153,9 +159,12 @@ end
 sumCentered= sqrt(sumCentered/(lenn-1))
 
 summ=summ-con[2]
-summ=sumCentered-con[3]
+sumCentered=sumCentered-con[3]
 
-exp(con[1]-( ((centeredA*con[4]+centered2*con[6])*centeredA+(centeredA*con[5]+centered2*con[7])*centered2)/2    ) )
+exp(con[1]-( ((summ*con[4]+sumCentered*con[6])*summ+(summ*con[5]+sumCentered*con[7])*sumCentered)/2    ) )
+
+
+
 
 
 
