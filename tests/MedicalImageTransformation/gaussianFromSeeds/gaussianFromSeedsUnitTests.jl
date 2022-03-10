@@ -10,6 +10,7 @@ using LinearAlgebra
 using Distributions
 using PDMats
 using StaticArrays
+using Main.GaussianPure
 
 
 """
@@ -18,10 +19,10 @@ will be saved with known number of marked points  x on known position
 We will assert thag wefound correctly those points and that 
 """
 @testset " getCoordinatesOfMarkings " begin 
-A = ones(4,4,4)
-B = ones(4,4,4)
+A = zeros(4,4,4)
+B = zeros(4,4,4)
 coords = [CartesianIndex(1,2,3),CartesianIndex(1,4,3) ] 
-A[coords].=7
+A[coords].=1
 @test Main.GaussianPure.getCoordinatesOfMarkings(Float64,Float64,A,B) ==coords
 end # getCoordinatesOfMarkings
 
@@ -243,17 +244,11 @@ end
 
 function getPdfEvals(xxx,dists)
         
-
-
     distData = dists[1]
     mvNormm = dists[2]
-
-
     distProb = Distributions.pdf(mvNormm, xxx) # we check the probability in mean ... so we know it needs to be high
-
     centered =  xxx.-distData[1]
     myProb = exp(distData[3]- (transpose( centered )*distData[2]* centered )/2 )
-
     return(distProb,myProb)
 end
 

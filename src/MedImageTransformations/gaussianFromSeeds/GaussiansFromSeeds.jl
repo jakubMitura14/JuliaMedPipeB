@@ -9,6 +9,10 @@ using Statistics
 using LinearAlgebra
 using StaticArrays
 
+export getCartesianAroundPoint
+export getSampleMeanAndStd
+
+
 ```@doc
 works only for 3d cartesian coordinates
   cart - cartesian coordinates of point where we will add the dimensions ...
@@ -87,9 +91,11 @@ end
 getSampleMeanAndStd\(points,I\)
 ```
 function  getSampleMeanAndStd(a ::Type{Numb},b ::Type{myFloat}, coords::Vector{CartesianIndex{3}} , I  ) ::Vector{myFloat} where{Numb, myFloat}
+
   sizz = size(I)  
   arr= I[filter(c-> c[1]>0 && c[2]>0 && c[3]>0 
-                    && c[1]<sizz[1]&& c[2]<sizz[2] && c[3]<sizz[3]  ,coords)]
+                && c[1]<sizz[1]&& c[2]<sizz[2] && c[3]<sizz[3]  ,coords)]
+                
     return [mean(arr), std(arr)]   
 end
 
@@ -106,7 +112,7 @@ end
 9.We calculate feature vector related to a seed  point  where we will normalize means and standard deviations
  from all pixels in a primary patch where each feature vector ba
 ```
-function calculateFeatureVector(a ::Type{myFloat},patchStat)  where{ myFloat}
+function calculateFeatureVector(a ,patchStat)  
      return  [ getSumOverNorm(map(x->x[1], patchStat)) ,   getSumOverNorm(map(x->x[2], patchStat)) ] 
 end    
 ```@doc
@@ -122,7 +128,7 @@ end
 Calculating the Covariance matrix for single 2 dimensional matrix 
 patchStat means and standard deviations related to given seedpoint
 ```
-function getCovarianceMatrix(a ::Type{myFloat},patchStat ) where{ myFloat}
+function getCovarianceMatrix(a,patchStat ) 
     means= [x[1] for x in patchStat]
     stds = [x[2] for x in patchStat]
     covv = cov(means,stds)
@@ -136,7 +142,7 @@ covarianceMatrix  is 2 by 2
 fetureVectLength tells us about dimensionality of features
 return calculated log of multivariate normal distribution
 ```
-function getLogNormalConst(a ::Type{myFloat},covarianceMatrix, fetureVectLength ::Int) :: myFloat where{ myFloat}
+function getLogNormalConst(a ::Type{myFloat},covarianceMatrix ::SMatrix{2, 2, myFloat, 4}, fetureVectLength ::Int) :: myFloat where{ myFloat}
     return  -(fetureVectLength*  log(2π)+logdet(covarianceMatrix))/2
 end    
 

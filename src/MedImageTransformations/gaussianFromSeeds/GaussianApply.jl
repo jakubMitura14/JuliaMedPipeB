@@ -10,6 +10,7 @@ Remember to ignore all of the patches that has exactly equal value of whole patc
 
 using CUDA
 
+
 """
 we already have set of constants required for calculating gaussian distribution
 now we need to apply this information to each voxel so we need 
@@ -28,8 +29,9 @@ e) outout float image
 5) get the mean from values calculated in point 4 and save it into output array
 
 """
+function getMaxGauss()
 
-
+  end
 
 
 
