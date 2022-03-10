@@ -7,6 +7,7 @@ using Main.HDF5saveUtils
 using MedEye3d
 using Distributions
 using Clustering
+using IrrationalConstants
 
 patienGroupName="0"
 listOfColorUsed= falses(18)
@@ -89,6 +90,37 @@ indicies
 #ditributions from diffrent clusters
 chosenDistribs = map(ind->distribs[ind] ,indicies)
 
+
+
+############# GPU play 
+exampleDistr= distribs[4]
+exampleDistr.μ
+exampleDistr.Σ
+
+
+function mvnormal_c0(d::AbstractMvNormal)
+    ldcd = logdetcov(d)
+    return - (length(d) * oftype(ldcd, log2π) + ldcd) / 2
+end
+
+xxx= patchStats[1][1]
+
+Distributions.pdf(distribs[4], xxx) #0.0019
+
+c0= mvnormal_c0(exampleDistr)
+
+centered =  xxx-exampleDistr.μ
+myProb = exp(c0- (transpose( centered )*inv(exampleDistr.Σ)* centered )/2 )
+
+
+
+
+
+
+
+
+###############
+
 ## single thread
 function getMaxProb(point)
     coords= getCartesianAroundPoint(point,z)
@@ -108,20 +140,11 @@ Threads.@threads for i = 1:length(image)
     algoOutput[i] = getMaxProb(cartss[1])
 end
 
-## GPU
-exampleDistr= distribs[1]
-exampleDistr.μ
-exampleDistr.Σ
 
 
 
 
 maximum(algoOutput)
-
-
-
-
-
 
 
 
