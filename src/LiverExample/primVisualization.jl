@@ -2,18 +2,25 @@ pathToHDF5="D:\\dataSets\\forMainHDF5\\smallLiverDataSet.hdf5"
 
 using Revise
 includet("D:\\projects\\vsCode\\JuliaMedPipeB\\tests\\includeAll.jl")
-using Main.GaussianPure
-using Main.HDF5saveUtils
+using Main.GaussianPure, Main.HDF5saveUtils,Main.visualizationFromHdf5, Main.distinctColorsSaved
 using MedEye3d
+import MedEye3d.ForDisplayStructs.TextureSpec
 using Distributions
 using Clustering
 using IrrationalConstants
+using CUDA
 
 patienGroupName="0"
-listOfColorUsed= falses(18)
+z=7# how big is the area from which we collect data to construct probability distributions
+klusterNumb = 5# number of clusters - number of probability distributions we will use
+
+
+#******************for display
 
 #1) open HDF5 file and define additional arrays needed for our algorithm
-fid = h5open(pathToHDF5, "r+")
+fid = openHDF5(pathToHDF5)
+listOfColorUsed= falses(18)
+
 #manual Modification array
 manualModif = TextureSpec{UInt8}(# choosing number type manually to reduce memory usage
     name = "manualModif",
@@ -40,22 +47,19 @@ mainScrollDat= loadFromHdf5Prim(fid,patienGroupName,addTextSpecs,listOfColorUsed
 saveManualModif(fid,patienGroupName , mainScrollDat)
 #4) filtering out from the manually modified array all set pixels and get constants needed for later evaluation of gaussian PDF
 
-#manualModif= filter((it)->it.name=="manualModif" ,mainScrollDat.dataToScroll)[1].dat
 manualModif= getArrByName("manualModif" ,mainScrollDat)
-#image= filter((it)->it.name=="image" ,mainScrollDat.dataToScroll)[1].dat
 image=  getArrByName("image" ,mainScrollDat)
-
 algoOutput= getArrByName("algoOutput" ,mainScrollDat)
 
-#forGaussData= GaussianPure.getConstantsForPDF(Float64,eltype(image),eltype(manualModif) , manualModif, image,z)
-
-#################  
+mainArrSize= size(image)
 
 
-### coords 
-z=7
 
-##coordinates of manually set 
+#****************** constructing probability distributions
+
+
+
+##coordinates of manually set points
 coordsss= GaussianPure.getCoordinatesOfMarkings(eltype(image),eltype(manualModif),  manualModif, image) |>
     (seedsCoords) ->GaussianPure.getPatchAroundMarks(seedsCoords,z ) |>
     (patchCoords) ->GaussianPure.allNeededCoord(patchCoords,z )
@@ -69,7 +73,6 @@ distribs = map(patchStat-> fit(MvNormal, reduce(hcat,(patchStat)))  , patchStats
 #in order to reduce computational complexity  we will reduce the number of used distributions using kl divergence
 
 #we are comparing all distributions 
-klusterNumb = 5
 klDivs =map(outerDist->    map(dist->kldivergence( outerDist  ,dist), distribs  ), distribs  )
 klDivsInMatrix = reduce(hcat,(klDivs))
 #clustering with kmeans
@@ -91,25 +94,40 @@ indicies
 chosenDistribs = map(ind->distribs[ind] ,indicies)
 
 
+#************************ applying  probability distributions to image 
 
-############# GPU play 
-exampleDistr= distribs[4]
 
+### getting constants from distributions
+
+"""
+calculate log normalization constant from distribution
+"""
 function mvnormal_c0(d::AbstractMvNormal)
     ldcd = logdetcov(d)
     return - (length(d) * oftype(ldcd, log2π) + ldcd) / 2
 end
-#Distributions.pdf(distribs[4], xxx) #0.0019
 
-c0= mvnormal_c0(exampleDistr)
-invCov= inv(exampleDistr.Σ)
-# 1) logConst 2) mu1 3) mu2 4) invcov00 5)invcov01 6)invcov10 7)invcov11 
-con= [c0,exampleDistr.μ[1],exampleDistr.μ[2],invCov[1,1],invCov[1,2],invCov[2,1],invCov[2,2]  ]
+"""
+get constants needed for applying probability distributions
+ return vector   1) logConst 2) mu1 3) mu2 4) invcov00 5)invcov01 6)invcov10 7)invcov11 
+"""
+function getDistrConstants(exampleDistr)
+    c0= mvnormal_c0(exampleDistr)
+    invCov= inv(exampleDistr.Σ)
+    return [c0,exampleDistr.μ[1],exampleDistr.μ[2],invCov[1,1],invCov[1,2],invCov[2,1],invCov[2,2]  ]
+end#getDistrConstants
 
-####################
 
-using CUDA
+# creating matrix from constants
+allConstants = map(distr-> getDistrConstants(distr)  , chosenDistribs) |>
+               (vectOfvects)-> reduce(hcat, vectOfvects)
 
+
+#### defining CUDA kernel
+
+"""
+utility macro to iterate in given range around given voxel
+"""
 macro iterAround(ex   )
     return esc(quote
         for xAdd in -r:r
@@ -134,50 +152,41 @@ macro iterAround(ex   )
 end
       
 
-
-
-
- #@iterAround  vecc[index]= CartesianIndex(x,y,z)
-
-
-
-
-###
-
-mainArrSize= size(image)
 """
-con - set of precalculated constants
+con - matrix of precalculated constants
 image - main image here computer tomography image
 mainArrSize - dimensions of image
 output - where we want to save the calculations
 r - size of the evaluated patch
+klusterNumb- number of clusters - number of probability distributions we will use
 """
-function applyGaussKernel(con,image,mainArrSize,output, r::Int)
-    summ=0.0
-    sumCentered=0.0
-    lenn= UInt8(0)
-    #get mean
-    @iterAround begin 
-        lenn=lenn+1
-        summ+=image[x,y,z]    
-    end
-    summ=summ/lenn
-    #get standard deviation
-    @iterAround sumCentered+= ((image[x,y,z]-summ )^2)
+function applyGaussKernel(con,image,mainArrSize,output, r::Int,klusterNumb::Int)
+    for probDist in 1:klusterNumb
+        summ=0.0
+        sumCentered=0.0
+        lenn= UInt8(0)
+        #get mean
+        @iterAround begin 
+            lenn=lenn+1
+            summ+=image[x,y,z]    
+        end
+        summ=summ/lenn
+        #get standard deviation
+        @iterAround sumCentered+= ((image[x,y,z]-summ )^2)
 
-    #here we have standard deviation
-    sumCentered= sqrt(sumCentered/(lenn-1))
-    #centering - subtracting means...
-    summ=summ-con[2]
-    sumCentered=sumCentered-con[3]
-    #saving output
-    x= (threadIdx().x+ ((blockIdx().x -1)*CUDA.blockDim_x()))
-    y= (threadIdx().y+ ((blockIdx().y -1)*CUDA.blockDim_y()))
-    z= (threadIdx().z+ ((blockIdx().z -1)*CUDA.blockDim_z()))
-    if(x>0 && x<=mainArrSize[1] && y>0 && y<=mainArrSize[2] &&z>0 && z<=mainArrSize[3] )
-        output[x,y,z]=exp(con[1]-( ((summ*con[4]+sumCentered*con[6])*summ+(summ*con[5]+sumCentered*con[7])*sumCentered)/2    ) )
-    end  
-
+        #here we have standard deviation
+        sumCentered= sqrt(sumCentered/(lenn-1))
+        #centering - subtracting means...
+        summ=summ-con[2,probDist]
+        sumCentered=sumCentered-con[3,probDist]
+        #saving output
+        x= (threadIdx().x+ ((blockIdx().x -1)*CUDA.blockDim_x()))
+        y= (threadIdx().y+ ((blockIdx().y -1)*CUDA.blockDim_y()))
+        z= (threadIdx().z+ ((blockIdx().z -1)*CUDA.blockDim_z()))
+        if(x>0 && x<=mainArrSize[1] && y>0 && y<=mainArrSize[2] &&z>0 && z<=mainArrSize[3] )
+            output[x,y,z]=  max(exp(con[1,probDist]-( ((summ*con[4,probDist]+sumCentered*con[6,probDist])*summ+(summ*con[5,probDist]+sumCentered*con[7,probDist])*sumCentered)/2 ) ),output[x,y,z]  )
+        end  
+    end#for
     return
 end#main kernel
 
@@ -187,121 +196,132 @@ blocks = (cld(mainArrSize[1],threads[1]), cld(mainArrSize[2],threads[2])  , cld(
 
 algoOutputGPU=CuArray(algoOutput)
 imageGPU=CuArray(image)
-conGPU = CuArray(con)
-@cuda threads=threads blocks=blocks applyGaussKernel(conGPU,imageGPU,mainArrSize,algoOutputGPU, z)
-
+conGPU = CuArray(allConstants)
+@cuda threads=threads blocks=blocks applyGaussKernel(conGPU,imageGPU,mainArrSize,algoOutputGPU, 5,klusterNumb)
+#@cuda threads=threads blocks=blocks applyGaussKernel(conGPU,imageGPU,mainArrSize,algoOutputGPU, z,klusterNumb)
 copyto!(algoOutput,algoOutputGPU)
+sum(algoOutput)# just to check is anythink copied
 
-sum(algoOutput)
-
-
-algoOutput=algoOutput.*10
-
-algoOutputGPU[1]
-
+#copy and divide by max so will be easier to visualize
 algoOutputB= getArrByName("algoOutput" ,mainScrollDat)
-sum(algoOutputB)
-algoOutputB[:,:,:]=algoOutput[:,:,:]
+maxEl = maximum(algoOutputGPU)
+algoOutputB[:,:,:]=algoOutput./maxEl
 
+### just to show how slow it would be to achieve the same on CPU
 
-#coordA = GaussianPure.getCoordinatesOfMarkings(eltype(image),eltype(manualModif),  manualModif, image)[1]
-
-
-
-
-###############
-
-## single thread
-function getMaxProb(point)
-    coords= getCartesianAroundPoint(point,z)
-    xxx=getSampleMeanAndStd( Float64,Float64, coords , image  )
-    return maximum(map(dist-> Distributions.pdf(dist, xxx),chosenDistribs))
-end
-
-
-output = map(getMaxProb, CartesianIndices(image))
-maximum(output)
-algoOutput[:,:,:]=output./maximum(output)
-
-
-## multithread
-cartss = CartesianIndices(image)
-Threads.@threads for i = 1:length(image)
-    algoOutput[i] = getMaxProb(cartss[1])
-end
-
-
-
-
-
-maximum(algoOutput)
-
-
-
-# #now we can 
-# using Distributed
-# using SharedArrays
-
-# addprocs(8)
-# @everywhere begin
-#   z=7
-
-#   function cartesianTolinear(pointCart::CartesianIndex{3}) :: Int16
-#     abs(pointCart[1])+ abs(pointCart[2])+abs(pointCart[3])
-#  end
-
-#   function getCartesianAroundPointB(pointCart::CartesianIndex{3}, patchSize ::Int)
-#     ones = CartesianIndex(patchSize,patchSize,patchSize) # cartesian 3 dimensional index used for calculations to get range of the cartesian indicis to analyze
-#     out = Array{CartesianIndex{3}}(UndefInitializer(), 6+2*patchSize^4)
-#     index =0
-#     for J in (pointCart-ones):(pointCart+ones)
-#       diff = J - pointCart # diffrence between dimensions relative to point of origin
-#         if cartesianTolinear(diff) <= patchSize
-#           index+=1
-#           out[index] = J
-#         end
-#         end
-#   return out[1:index]
-#   end
-  
-#   function  getSampleMeanAndStdB(a ::Type{Numb},b ::Type{myFloat}, coords::Vector{CartesianIndex{3}} , I  ) ::Vector{myFloat} where{Numb, myFloat}
-
-#     sizz = size(I)  
-#     arr= I[filter(c-> c[1]>0 && c[2]>0 && c[3]>0 
-#                   && c[1]<sizz[1]&& c[2]<sizz[2] && c[3]<sizz[3]  ,coords)]
-                  
-#       return [mean(arr), std(arr)]   
-#   end
-
-#     function getMaxProb(point)
-#         coords= getCartesianAroundPointB(point,z)
-#         xxx=getSampleMeanAndStdB( Float64,Float64, coords , image  )
-#         return maximum(map(dist-> Distributions.pdf(dist, xxx),chosenDistribs))
-#     end
+# ## single thread
+# function getMaxProb(point)
+#     coords= getCartesianAroundPoint(point,z)
+#     xxx=getSampleMeanAndStd( Float64,Float64, coords , image  )
+#     return maximum(map(dist-> Distributions.pdf(dist, xxx),chosenDistribs))
 # end
 
 
+# output = map(getMaxProb, CartesianIndices(image))
+# maximum(output)
+# algoOutput[:,:,:]=output./maximum(output)
 
 
-
-
-
-
+# ## multithread
+# cartss = CartesianIndices(image)
+# Threads.@threads for i = 1:length(image)
+#     algoOutput[i] = getMaxProb(cartss[1])
+# end
 
 
 saveMaskbyName(fid,patienGroupName , mainScrollDat, "algoOutput")
 
+#******************************************************** relaxation labelling
+
+########5) 
+"""
+in case of the relaxation labelling for 2D case algorithm basically can be simplified to
+iteratively look into the surrounding elements and increase value of a voxel given voxels around
+had high enough value and decrese otherwise
+
+adapted from https://discourse.julialang.org/t/3d-medical-app-stencil/64019/4
+"""
+
+const USE_GPU = true
+using ParallelStencil
+using ParallelStencil.FiniteDifferences3D
+
+@init_parallel_stencil(CUDA, Float64, 3);
 
 
 
-#5) using CUDA applying calculated constants to each voxel - setting the probability of a voxel to be liver
+
+
+
+#cutoff set manually to rate
+@parallel_indices (ix,iy,iz) function relaxationLabellKern(In, rate)
+    # 7-point Neuman stencil
+    if (ix>1 && iy>1 && iz>1 &&      ix<(size(In,1))&& iy<(size(In,2)) && iz<(size(In,3)))
+        In[ix,iy,iz] = ( (In[ix-1,iy  ,iz  ] >rate)+
+                          (In[ix-1,iy  ,iz  ]>rate)+ (In[ix+1,iy  ,iz  ]>rate) +
+                          (In[ix  ,iy-1,iz  ]>rate) + (In[ix  ,iy+1,iz  ]>rate) +
+                          (In[ix  ,iy  ,iz-1]>rate) + (In[ix  ,iy  ,iz+1]>rate) )/7.0
+
+     
+    end
+    return
+end
+
+@views function relaxLabels(In, iterNumb,rate)
+    #rate=0.0
+    # Calculation
+    for i in 1:iterNumb
+        #rate+= (i/iterNumb)
+        @parallel relaxationLabellKern(In,rate)
+    end#for    
+    return
+end
+
+rate=0.15
+relaxLabels(algoOutputGPU,40,rate)
+
+copyto!(algoOutput,algoOutputGPU)
+Int(round(sum(algoOutput)))# just to check is anythink copied  #85162
+
+#copy and divide by max so will be easier to visualize
+algoOutputB= getArrByName("algoOutput" ,mainScrollDat)
+algoOutputB[:,:,:]=algoOutput
+
+
+
+#relaxLabels(algoOutputGPU,10)
+
+###########7) displaying performance metrics
+
+# first we need to define the cutoff  over which we will decide that probability indicates that it is truly a liver 
+cutoff = 0.5
+
+#simple CUDA array programming
+a .= 5
+
+map(sin, a)
+
+
+
+using MedEval3D
+conf= ConfigurtationStruct(md=true, dc=true)
+numberToLookFor = UInt8(1)
+
+preparedDict=MainAbstractions.prepareMetrics(conf)
+
+res= calcMetricGlobal(preparedDict,conf,arrGold,arrAlgo,numberToLookFor)
+res.md # will give 0.127
 
 
 
 
-#6) relaxation labelling
 
-#7) displaying performance metrics
+
+
+
+
+
+
 saveManualModif(fid,patienGroupName , mainScrollDat)
 
 close(fid)

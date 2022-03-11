@@ -9,6 +9,10 @@ supported 'dataType' attributes for dataSets
 
 """
 
+module visualizationFromHdf5
+  
+
+export getArrByName,loadFromHdf5Prim,getSomeColor,openHDF5
 
 using Revise
 import MedEye3d
@@ -28,7 +32,17 @@ import MedEye3d.DisplayWords.textLinesFromStrings
 import MedEye3d.StructsManag.getThreeDims
 import MedEye3d.DisplayWords.textLinesFromStrings
 import MedEye3d.StructsManag.getThreeDims
+using Main.distinctColorsSaved
 
+
+
+"""
+simply open dataset
+"""
+function openHDF5(pathToHDF5)
+  return  h5open(pathToHDF5, "r+")
+
+end
 
 
 
@@ -81,7 +95,7 @@ function onlyPermute(pixels)
 
     return pixels
   end#permuteAndReverse
-
+  
 
 """
 loading image from HDF5 dataset 
@@ -181,8 +195,8 @@ slicesDat= getThreeDims(tupleVect )
 #mainLines= textLinesFromStrings([""]);
 #supplLines=[];
 
-mainLines= textLinesFromStrings(["main Line1", "main Line 2"]);
-supplLines=map(x->  textLinesFromStrings(["sub  Line 1 in $(x)", "sub  Line 2 in $(x)"]), 1:imageSize[3] );
+mainLines= textLinesFromStrings([" "]);
+supplLines=map(x->  textLinesFromStrings(["slice $(x)"]), 1:imageSize[3] );
 
 
 
@@ -243,6 +257,8 @@ return  filter((it)->it.name==name ,mainScrollDat.dataToScroll)[1].dat
 
 end #getArrByName
 
+
+end#end
 
 
 

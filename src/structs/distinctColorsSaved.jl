@@ -1,4 +1,7 @@
 
+
+module distinctColorsSaved
+export listOfColors, longColorList
 """
 set of 18 contrasting colors from https://sashamaps.net/docs/resources/20-colors/ - I excluded black and white from original 20 
 also red and yellow were pushed to the end in case pet image will be displayed
@@ -273,3 +276,6 @@ longColorList=[(184,129,131),
 (0,0,0),
 (69,44,44),
 (200,161,161)]
+
+
+end#distinctColorsSaved
