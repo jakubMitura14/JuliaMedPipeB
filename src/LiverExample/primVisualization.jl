@@ -8,7 +8,6 @@ import MedEye3d.ForDisplayStructs.TextureSpec
 using Distributions
 using Clustering
 using IrrationalConstants
-using CUDA
 
 patienGroupName="0"
 z=7# how big is the area from which we collect data to construct probability distributions
@@ -193,7 +192,7 @@ end#main kernel
 # for simplicity not using the occupancy API - in production one rather should
 threads=(8,4,8)
 blocks = (cld(mainArrSize[1],threads[1]), cld(mainArrSize[2],threads[2])  , cld(mainArrSize[3],threads[3]))
-
+using CUDA
 algoOutputGPU=CuArray(algoOutput)
 imageGPU=CuArray(image)
 conGPU = CuArray(allConstants)
@@ -268,17 +267,16 @@ using ParallelStencil.FiniteDifferences3D
 end
 
 @views function relaxLabels(In, iterNumb,rate)
-    #rate=0.0
     # Calculation
     for i in 1:iterNumb
-        #rate+= (i/iterNumb)
-        @parallel relaxationLabellKern(In,rate)
+        innerRate=rate + ((i/iterNumb)/3)
+        @parallel relaxationLabellKern(In,innerRate)
     end#for    
     return
 end
 
 rate=0.15
-relaxLabels(algoOutputGPU,40,rate)
+relaxLabels(algoOutputGPU,50,rate)
 
 copyto!(algoOutput,algoOutputGPU)
 Int(round(sum(algoOutput)))# just to check is anythink copied  #85162
@@ -294,23 +292,48 @@ algoOutputB[:,:,:]=algoOutput
 ###########7) displaying performance metrics
 
 # first we need to define the cutoff  over which we will decide that probability indicates that it is truly a liver 
-cutoff = 0.5
+#####simple  tresholding
+function tresholdingKernel(mainArrSize,output)
+  
+        x= (threadIdx().x+ ((blockIdx().x -1)*CUDA.blockDim_x()))
+        y= (threadIdx().y+ ((blockIdx().y -1)*CUDA.blockDim_y()))
+        z= (threadIdx().z+ ((blockIdx().z -1)*CUDA.blockDim_z()))
+        if(x>0 && x<=mainArrSize[1] && y>0 && y<=mainArrSize[2] &&z>0 && z<=mainArrSize[3] )
+            output[x,y,z]=  (output[x,y,z]>0.5)
+        end  
+    return
+end#main kernel
 
-#simple CUDA array programming
-a .= 5
-
-map(sin, a)
+# for simplicity not using the occupancy API - in production one rather should
+threads=(8,8,8)
+blocks = (cld(mainArrSize[1],threads[1]), cld(mainArrSize[2],threads[2])  , cld(mainArrSize[3],threads[3]))
+@cuda threads=threads blocks=blocks tresholdingKernel(mainArrSize,algoOutputGPU)
 
 
 
 using MedEval3D
-conf= ConfigurtationStruct(md=true, dc=true)
-numberToLookFor = UInt8(1)
+using MedEval3D.BasicStructs
+using MedEval3D.MainAbstractions
+conf= ConfigurtationStruct(md=true, dice=true)
+numberToLookFor = 1.0
+liverGold= getArrByName("liver" ,mainScrollDat)
 
-preparedDict=MainAbstractions.prepareMetrics(conf)
+preparedDict=MedEval3D.MainAbstractions.prepareMetrics(conf)
+calculateAndDisplay(preparedDict,mainScrollDat, conf, numberToLookFor,CuArray(liverGold),algoOutputGPU )
 
-res= calcMetricGlobal(preparedDict,conf,arrGold,arrAlgo,numberToLookFor)
-res.md # will give 0.127
+
+
+
+mainScrollDat.mainTextToDisp
+
+copyto!(algoOutput,algoOutputGPU)
+Int(round(sum(algoOutput)))# just to check is anythink copied  #85162
+#copy and divide by max so will be easier to visualize
+algoOutputB= getArrByName("algoOutput" ,mainScrollDat)
+algoOutputB[:,:,:]=algoOutput
+
+
+
 
 
 

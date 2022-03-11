@@ -12,7 +12,7 @@ supported 'dataType' attributes for dataSets
 module visualizationFromHdf5
   
 
-export getArrByName,loadFromHdf5Prim,getSomeColor,openHDF5
+export getArrByName,loadFromHdf5Prim,getSomeColor,openHDF5,calculateAndDisplay
 
 using Revise
 import MedEye3d
@@ -30,11 +30,12 @@ import MedEye3d.ForDisplayStructs.ActorWithOpenGlObjects
 import MedEye3d.OpenGLDisplayUtils
 import MedEye3d.DisplayWords.textLinesFromStrings
 import MedEye3d.StructsManag.getThreeDims
-import MedEye3d.DisplayWords.textLinesFromStrings
-import MedEye3d.StructsManag.getThreeDims
+
 using Main.distinctColorsSaved
 
-
+using MedEval3D
+using MedEval3D.BasicStructs
+using MedEval3D.MainAbstractions
 
 """
 simply open dataset
@@ -258,64 +259,71 @@ return  filter((it)->it.name==name ,mainScrollDat.dataToScroll)[1].dat
 end #getArrByName
 
 
+
+function calculateAndDisplay(preparedDict,mainScrollDat::FullScrollableDat
+  , conf::ConfigurtationStruct,numberToLookFor,goldArr,algoOutputGPU) 
+  res= calcMetricGlobal(preparedDict,conf,goldArr,algoOutputGPU,numberToLookFor)
+  append!(mainScrollDat.mainTextToDisp, textLinesFromStrings(giveStringsFromResultMetrics(res,conf)) )
+
+
+end
+
+
+  
+  
+"""
+supplied ResultMetrics struct will return list of strings with results
+"""
+function giveStringsFromResultMetrics(res,conf::ConfigurtationStruct)::Vector{String}
+  output = []
+  if(conf.dice)
+    append!(output,["dice $(res.dice)"])
+  end  
+  if(conf.jaccard)
+    append!(output,["jaccard $(res.jaccard)"])
+  end  
+  if(conf.gce)
+    append!(output,["gce $(res.gce)"])
+  end  
+  if(conf.vol)
+    append!(output,["vol $(res.vol)"])
+  end  
+  if(conf.randInd)
+    append!(output,["randInd $(res.randInd)"])
+  end  
+  if(conf.ic)
+    append!(output,["ic $(res.ic)"])
+  end  
+  if(conf.kc)
+    append!(output,["kc $(res.kc)"])
+  end  
+  if(conf.mi)
+    append!(output,["mi $(res.mi)"])
+  end  
+  if(conf.vi)
+    append!(output,["vi $(res.vi)"])
+  end  
+  if(conf.md)
+    append!(output,["md $(res.md)"])
+  end  
+  if(conf.hd)
+    append!(output,["hd $(res.hd)"])
+  end  
+
+
+
+
+  return output
+
+end
+  
+  
+  
+  
+  
+
+
 end#end
 
 
 
-# dsetImage = fid["21/image"]
-# ctPixels=permuteAndReverse(dsetImage[:,:,:,1,1])
-# dsetLabel = fid["21/liver"]
-# ctLabels=permuteAndReverse(dsetLabel[:,:,:,1,1])
-
-# datToScrollDimsB= MedEye3d.ForDisplayStructs.DataToScrollDims(imageSize=  size(ctPixels) ,voxelSize=(1,1,1), dimensionToScroll = 3 );
-
-# textureSpecificationsOnlyCT = [
-#   TextureSpec{UInt8}(
-#       name = "manualModif",
-#       numb= Int32(1),
-#       color = RGB(1.0,0.0,0.0)
-#       ,minAndMaxValue= UInt8.([0,1])
-#       ,isEditable = true
-#      ),
-#      TextureSpec{Int8}(
-#         name = "goldStandard",
-#         numb= Int32(2),
-#         color = RGB(0.0,1.0,0.0)
-#         ,minAndMaxValue= Int8.([0,1])
-#         ,isEditable = true
-#        ),
-
-#      TextureSpec{Float32}(
-#       name= "CTIm",
-#       numb= Int32(3),
-#       isMainImage = true,
-#       minAndMaxValue= Int32.([0,100]))  
-# ];
-# # We need also to specify how big part of the screen should be occupied by the main image and how much by text fractionOfMainIm= Float32(0.8);
-# fractionOfMainIm= Float32(0.8);
-
-# import MedEye3d.DisplayWords.textLinesFromStrings
-
-# mainLines= textLinesFromStrings(["main Line1", "main Line 2"]);
-# supplLines=map(x->  textLinesFromStrings(["sub  Line 1 in $(x)", "sub  Line 2 in $(x)"]), 1:size(ctLabels)[3] );
-
-
-# import MedEye3d.StructsManag.getThreeDims
-
-# tupleVect = [("CTIm",ctPixels),("goldStandard",ctLabels),("manualModif",zeros(UInt8,size(ctPixels)) ) ]
-# slicesDat= getThreeDims(tupleVect )
-
-# mainScrollDat = FullScrollableDat(dataToScrollDims =datToScrollDimsB
-#                                  ,dimensionToScroll=1 # what is the dimension of plane we will look into at the beginning for example transverse, coronal ...
-#                                  ,dataToScroll= slicesDat
-#                                  ,mainTextToDisp= mainLines
-#                                  ,sliceTextToDisp=supplLines );
-
-
-# SegmentationDisplay.coordinateDisplay(textureSpecificationsOnlyCT ,fractionOfMainIm ,datToScrollDimsB ,1000);
-
-
-# Main.SegmentationDisplay.passDataForScrolling(mainScrollDat);
-
-
-# close(fid)
