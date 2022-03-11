@@ -94,48 +94,32 @@ chosenDistribs = map(ind->distribs[ind] ,indicies)
 
 ############# GPU play 
 exampleDistr= distribs[4]
-exampleDistr.μ
-exampleDistr.Σ
-
 
 function mvnormal_c0(d::AbstractMvNormal)
     ldcd = logdetcov(d)
     return - (length(d) * oftype(ldcd, log2π) + ldcd) / 2
 end
-
-xxx= patchStats[1][1]
-
-Distributions.pdf(distribs[4], xxx) #0.0019
-
+#Distributions.pdf(distribs[4], xxx) #0.0019
 
 c0= mvnormal_c0(exampleDistr)
 invCov= inv(exampleDistr.Σ)
 # 1) logConst 2) mu1 3) mu2 4) invcov00 5)invcov01 6)invcov10 7)invcov11 
 con= [c0,exampleDistr.μ[1],exampleDistr.μ[2],invCov[1,1],invCov[1,2],invCov[2,1],invCov[2,2]  ]
 
+####################
 
-###
+using CUDA
 
-r=1
-idx=10 # threadidx+ (blockidx-1)*blockdimx
-idy=10
-idz=10
-
-mainArrSize = (10,10,10)
-vecc = Vector{CartesianIndex{3}}(UndefInitializer(), 4)
-
-index =0
-
-    macro iterAround(ex   )
-        return esc(quote
+macro iterAround(ex   )
+    return esc(quote
         for xAdd in -r:r
-            x= idx+xAdd
-                if(x>0 && x<=mainArrSize[1])
+            x= (threadIdx().x+ ((blockIdx().x -1)*CUDA.blockDim_x()))+xAdd
+            if(x>0 && x<=mainArrSize[1])
                 for yAdd in -r:r
-                    y= idy+yAdd
+                    y= (threadIdx().y+ ((blockIdx().y -1)*CUDA.blockDim_y()))+yAdd
                     if(y>0 && y<=mainArrSize[2])
                         for zAdd in -r:r
-                            z= idz+zAdd
+                            z= (threadIdx().z+ ((blockIdx().z -1)*CUDA.blockDim_z()))+zAdd
                             if(z>0 && z<=mainArrSize[3])
                                 if((abs(xAdd)+abs(yAdd)+abs(zAdd)) <=r)
                                     $ex
@@ -147,44 +131,80 @@ index =0
             end
         end    
     end)
-    end
+end
       
 
 
- @iterAround  vecc[index]= CartesianIndex(x,y,z)
+
+
+ #@iterAround  vecc[index]= CartesianIndex(x,y,z)
 
 
 
 
-index
-
-Set(vecc)
-carts= GaussianPure.cartesianCoordAroundPoint(CartesianIndex(10,10,10),2)
-
-Set(vecc) == Set(carts)
 ###
-summ=0.0
-sumCentered=0.0
 
-ccoorr = coordsss[1][1]
-lenn= length(ccoorr)
-for i in 1: lenn
-    summ+=image[ccoorr[i]]
-end    
-#now sum wil be mean
-summ=summ/lenn
-for i in 1: lenn
-    sumCentered+= ((image[ccoorr[i]]-summ )^2)
-end   
-#here we have standard deviation
-sumCentered= sqrt(sumCentered/(lenn-1))
+mainArrSize= size(image)
+"""
+con - set of precalculated constants
+image - main image here computer tomography image
+mainArrSize - dimensions of image
+output - where we want to save the calculations
+r - size of the evaluated patch
+"""
+function applyGaussKernel(con,image,mainArrSize,output, r::Int)
+    summ=0.0
+    sumCentered=0.0
+    lenn= UInt8(0)
+    #get mean
+    @iterAround begin 
+        lenn=lenn+1
+        summ+=image[x,y,z]    
+    end
+    summ=summ/lenn
+    #get standard deviation
+    @iterAround sumCentered+= ((image[x,y,z]-summ )^2)
 
-summ=summ-con[2]
-sumCentered=sumCentered-con[3]
+    #here we have standard deviation
+    sumCentered= sqrt(sumCentered/(lenn-1))
+    #centering - subtracting means...
+    summ=summ-con[2]
+    sumCentered=sumCentered-con[3]
+    #saving output
+    x= (threadIdx().x+ ((blockIdx().x -1)*CUDA.blockDim_x()))
+    y= (threadIdx().y+ ((blockIdx().y -1)*CUDA.blockDim_y()))
+    z= (threadIdx().z+ ((blockIdx().z -1)*CUDA.blockDim_z()))
+    if(x>0 && x<=mainArrSize[1] && y>0 && y<=mainArrSize[2] &&z>0 && z<=mainArrSize[3] )
+        output[x,y,z]=exp(con[1]-( ((summ*con[4]+sumCentered*con[6])*summ+(summ*con[5]+sumCentered*con[7])*sumCentered)/2    ) )
+    end  
 
-exp(con[1]-( ((summ*con[4]+sumCentered*con[6])*summ+(summ*con[5]+sumCentered*con[7])*sumCentered)/2    ) )
+    return
+end#main kernel
+
+# for simplicity not using the occupancy API - in production one rather should
+threads=(8,4,8)
+blocks = (cld(mainArrSize[1],threads[1]), cld(mainArrSize[2],threads[2])  , cld(mainArrSize[3],threads[3]))
+
+algoOutputGPU=CuArray(algoOutput)
+imageGPU=CuArray(image)
+conGPU = CuArray(con)
+@cuda threads=threads blocks=blocks applyGaussKernel(conGPU,imageGPU,mainArrSize,algoOutputGPU, z)
+
+copyto!(algoOutput,algoOutputGPU)
+
+sum(algoOutput)
 
 
+algoOutput=algoOutput.*10
+
+algoOutputGPU[1]
+
+algoOutputB= getArrByName("algoOutput" ,mainScrollDat)
+sum(algoOutputB)
+algoOutputB[:,:,:]=algoOutput[:,:,:]
+
+
+#coordA = GaussianPure.getCoordinatesOfMarkings(eltype(image),eltype(manualModif),  manualModif, image)[1]
 
 
 
@@ -265,70 +285,7 @@ maximum(algoOutput)
 
 
 
-# now we have good dissimilar distributions
 
-
-klDivs[1]
-
-distribs[1]
-distribs[20]
-distribs[60]
-distribs[100]
-
-#simple multivariate gaussian
-#https://www.juliabloggers.com/multivariate-gaussian-distributions-in-julia/
-
-
-
-
-
-distData=forGaussData[3]
-
-
-coords= getCartesianAroundPoint(CartesianIndex(100,100,100),z)
-xxx=getSampleMeanAndStd( Float64,Float64, coords , image  )
-xxx
-centered =  xxx.-distData[1]
-myProb = exp(distData[3]- (transpose( centered )*distData[2]* centered )/2 )*10
-
-
-fit(Normal, x)
-
-
-
-
-
-
-
-
-#calculating the maximum from probability distributions results
-ind=0
-#we linearly iterate over all voxels in image
-for coord in CartesianIndices(image)    
-    ind+=1
-
-    if(image[coord]>0)
-        coords= getCartesianAroundPoint(coord,z)
-        xxx=getSampleMeanAndStd( Float64,Float64, coords , image  )
-
-        #inner loop 
-        myProb = 0.0
-
-        distData=forGaussData[3]
-        centered =  xxx.-distData[1]
-        myProb = (exp(distData[3]- (transpose( centered )*distData[2]* centered )/2 ))*10
-        # for distData in forGaussData
-        #     centered =  xxx.-distData[1]
-        #     myProb =max(exp(distData[3]- (transpose( centered )*distData[2]* centered )/2 ), myProb)*10
-        #     #myProb =exp(distData[3]- (transpose( centered )*distData[2]* centered )/2 )   *1000
-        # end
-        # if(myProb>0.1)
-        #     @info myProb
-        # end
-        algoOutput[ind]=myProb
-
-    end
-end
 
 
 
